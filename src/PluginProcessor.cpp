@@ -804,6 +804,22 @@ bool VellumProcessor::loadKit (const juce::File& file)
     return true;
 }
 
+void VellumProcessor::resetToInit()
+{
+    for (int i = 0; i < kNumPads; ++i) clearPad (i);
+    for (int i = 0; i < kNumPads; ++i) { pads[(size_t) i].userGainDb = 0.0f; padGains[(size_t) i].store (0.0f); }
+    loopAudio.clear(); loopName.clear(); sliceResult = SliceResult{}; loopVersion.fetch_add (1);
+    pattern = Pattern{}; pattern.clear(); pattern.name = "Empty";
+    internalPlay.store (false);
+    for (auto* param : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (param))
+            ranged->setValueNotifyingHost (ranged->getDefaultValue());
+    kitName = "Init";
+    humanizer.reset();
+    slicerChanged.sendChangeMessage();
+    padsChanged.sendChangeMessage();
+}
+
 void VellumProcessor::loadKitByOffset (int delta)
 {
     auto kits = listKits();

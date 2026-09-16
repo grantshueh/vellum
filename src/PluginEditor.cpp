@@ -42,6 +42,15 @@ VellumEditor::VellumEditor (VellumProcessor& p)
         }), true);
     };
     header.gear.onClick = [this] { setAdvanced (header.gear.getToggleState()); };
+    auto confirmNewKit = [this]
+    {
+        juce::NativeMessageBox::showAsync (juce::MessageBoxOptions().withTitle ("New kit")
+                                               .withMessage ("Clear all pads, the loaded loop, the pattern and reset every setting to default?\nUnsaved work is lost.")
+                                               .withButton ("Clear everything").withButton ("Cancel").withAssociatedComponent (this),
+                                           [this] (int r) { if (r == 0) { processor.resetToInit(); showTab (0); header.setKitName (processor.getKitName()); } });
+    };
+    header.newKit.onClick = confirmNewKit;
+    kitsView.onNewKit = confirmNewKit;
     tabs.onTab = [this] (int t) { showTab (t); };
     pads.onSelect = [this] (int pad) { samplesView.showPad (pad); };
     samplesView.showPad (0);

@@ -92,6 +92,7 @@ public:
     void saveKit (const juce::String& name);
     bool loadKit (const juce::File& file);
     void loadKitByOffset (int delta);
+    void resetToInit();                 // clear all pads, loop, pattern; all parameters back to default
     juce::String getKitName() const { return kitName; }
     void setKitName (const juce::String& n) { kitName = n; }
 

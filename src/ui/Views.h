@@ -44,7 +44,7 @@ public:
     void resized() override;
     void setKitName (const juce::String& n) { if (kitName != n) { kitName = n; repaint(); } }
     IconButton prev { IconButton::ArrowLeft, "prev" }, next { IconButton::ArrowRight, "next" }, gear { IconButton::Gear, "advanced" };
-    juce::TextButton save { "save kit" };
+    juce::TextButton save { "save kit" }, newKit { "new" };
 private:
     juce::String kitName;
 };
@@ -170,7 +170,10 @@ private:
     juce::ListBox list;
     juce::Array<juce::File> kits;
     juce::TextEditor nameEditor;
-    juce::TextButton saveBtn { "save" }, loadBtn { "load" }, folderBtn { "open folder" }, deleteBtn { "delete" };
+    juce::TextButton saveBtn { "save" }, loadBtn { "load" }, folderBtn { "open folder" }, deleteBtn { "delete" }, newBtn { "new kit (clear all)" };
+public:
+    std::function<void()> onNewKit;
+private:
 };
 
 // ---------------------------------------------------------------------------

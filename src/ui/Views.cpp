@@ -128,8 +128,9 @@ void IconButton::paintButton (juce::Graphics& g, bool hover, bool down)
 // HeaderBar
 HeaderBar::HeaderBar()
 {
-    save.setComponentID ("pill");
-    addAndMakeVisible (prev); addAndMakeVisible (next); addAndMakeVisible (save); addAndMakeVisible (gear);
+    save.setComponentID ("pill"); newKit.setComponentID ("pill");
+    newKit.setTooltip ("Clear all pads, the loop, the pattern and every setting");
+    addAndMakeVisible (prev); addAndMakeVisible (next); addAndMakeVisible (save); addAndMakeVisible (newKit); addAndMakeVisible (gear);
     gear.setClickingTogglesState (true);
 }
 
@@ -139,6 +140,7 @@ void HeaderBar::resized()
     save.setBounds (cx - 60, 27, 120, 17);
     prev.setBounds (cx - 92, 25, 22, 22);
     next.setBounds (cx + 70, 25, 22, 22);
+    newKit.setBounds (cx - 160, 27, 56, 17);
     gear.setBounds (getWidth() - 44, 12, 28, 28);
 }
 
@@ -572,7 +574,8 @@ KitsView::KitsView (VellumProcessor& p) : processor (p)
     nameEditor.setTextToShowWhenEmpty ("kit name", textDim);
     nameEditor.setFont (font (12.0f));
     addAndMakeVisible (nameEditor);
-    for (auto* b : { &saveBtn, &loadBtn, &folderBtn, &deleteBtn }) addAndMakeVisible (*b);
+    for (auto* b : { &saveBtn, &loadBtn, &folderBtn, &deleteBtn, &newBtn }) addAndMakeVisible (*b);
+    newBtn.onClick = [this] { if (onNewKit) onNewKit(); };
     saveBtn.onClick = [this] { auto n = nameEditor.getText().trim(); if (n.isEmpty()) n = processor.getKitName(); processor.saveKit (n); refresh(); };
     loadBtn.onClick = [this] { const int r = list.getSelectedRow(); if (r >= 0 && r < kits.size()) processor.loadKit (kits[r]); };
     folderBtn.onClick = [this] { VellumProcessor::kitsFolder().revealToUser(); };
@@ -595,7 +598,8 @@ void KitsView::resized()
     saveBtn.setBounds (side.removeFromTop (28)); side.removeFromTop (8);
     loadBtn.setBounds (side.removeFromTop (28)); side.removeFromTop (8);
     deleteBtn.setBounds (side.removeFromTop (28)); side.removeFromTop (8);
-    folderBtn.setBounds (side.removeFromTop (28));
+    folderBtn.setBounds (side.removeFromTop (28)); side.removeFromTop (24);
+    newBtn.setBounds (side.removeFromTop (28));
 }
 
 void KitsView::paint (juce::Graphics& g)
