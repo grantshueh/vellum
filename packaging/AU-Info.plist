@@ -50,7 +50,7 @@
 				<key>network.client</key>
 				<false/>
 				<key>temporary-exception.files.all.read-write</key>
-				<false/>
+				<true/>
 			</dict>
 			<key>tags</key>
 			<array>
