@@ -253,3 +253,6 @@ $(BUILD)/drop_test: tests/drop_test.cpp $(UI_SNAP_OBJS)
 	$(CXX) $(OUR_CXXFLAGS) $(DEFS) $(SA_DEFS) $< $(UI_SNAP_OBJS) $(FRAMEWORKS) -o $@
 $(BUILD)/drag_harness: tests/drag_harness.mm $(UI_SNAP_OBJS)
 	$(CXX) $(OUR_CXXFLAGS) $(DEFS) $(SA_DEFS) -ObjC++ -fobjc-arc $< $(UI_SNAP_OBJS) $(FRAMEWORKS) -o $@
+
+# the vendored macOS peer is patched (drag & drop); make sure module objects rebuild when it changes
+$(BUILD)/obj/au/juce_gui_basics/juce_gui_basics.o $(BUILD)/obj/sa/juce_gui_basics/juce_gui_basics.o: $(JUCE)/juce_gui_basics/native/juce_NSViewComponentPeer_mac.mm

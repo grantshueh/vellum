@@ -194,6 +194,8 @@ public:
         setOwner (view, this);
 
         [view registerForDraggedTypes: getSupportedDragTypes()];
+        dragLog ("registered drag types on " + nsStringToJuce (NSStringFromClass ([view class]))
+                 + " process=" + File::getSpecialLocation (File::currentExecutableFile).getFileName());
 
         resetTrackingArea (view);
 
@@ -1472,20 +1474,28 @@ public:
 
     static NSString* legacyFilenamesType() { return nsStringLiteral ("NSFilenamesPboardType"); }
 
-    static void logUnsupportedDrag (NSPasteboard* pasteboard)
+    static void dragLog (const String& line)
     {
         static int logged = 0;
-        if (logged++ > 20) return;
+        if (logged++ > 60) return;
         auto f = File::getSpecialLocation (File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
         f.getParentDirectory().createDirectory();
-        f.appendText (Time::getCurrentTime().toString (true, true) + "  pasteboard types: "
-                      + nsStringToJuce ([[pasteboard types] description]) + "\n");
+        f.appendText (Time::getCurrentTime().toString (true, true) + "  " + line + "\n");
+    }
+
+    static void logUnsupportedDrag (NSPasteboard* pasteboard)
+    {
+        dragLog ("UNSUPPORTED pasteboard types: " + nsStringToJuce ([[pasteboard types] description]));
     }
 
     BOOL sendDragCallback (bool (ComponentPeer::* callback) (const DragInfo&), id <NSDraggingInfo> sender)
     {
         NSPasteboard* pasteboard = [sender draggingPasteboard];
         NSString* contentType = [pasteboard availableTypeFromArray: getSupportedDragTypes()];
+        dragLog (String (callback == &ComponentPeer::handleDragDrop ? "DROP" : callback == &ComponentPeer::handleDragExit ? "EXIT" : "MOVE")
+                 + " types=" + nsStringToJuce ([[pasteboard types] componentsJoinedByString: nsStringLiteral (",")])
+                 + " superview=" + nsStringToJuce ([view superview] ? NSStringFromClass ([[view superview] class]) : nsStringLiteral ("none"))
+                 + " window=" + nsStringToJuce ([view window] ? NSStringFromClass ([[view window] class]) : nsStringLiteral ("none")));
 
         if (contentType == nil)
         {
@@ -1525,8 +1535,14 @@ public:
         }
 
         if (! dragInfo.isEmpty())
-            return (this->*callback) (dragInfo);
+        {
+            const bool handled = (this->*callback) (dragInfo);
+            dragLog (String ("  -> files=") + dragInfo.files.joinIntoString (" | ") + " handled=" + (handled ? "yes" : "no")
+                     + " pos=" + String (dragInfo.position.x) + "," + String (dragInfo.position.y));
+            return handled;
+        }
 
+        dragLog ("  -> nothing usable on the pasteboard");
         return false;
     }
 
