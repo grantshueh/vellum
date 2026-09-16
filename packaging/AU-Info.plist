@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleDisplayName</key>
+	<string>Vellum</string>
+	<key>CFBundleExecutable</key>
+	<string>Vellum</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.vellum.vellum</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Vellum</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>0.1.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Vellum</string>
+	<key>AudioComponents</key>
+	<array>
+		<dict>
+			<key>description</key>
+			<string>Drum resynthesis instrument</string>
+			<key>factoryFunction</key>
+			<string>VellumAUFactory</string>
+			<key>manufacturer</key>
+			<string>Vlum</string>
+			<key>name</key>
+			<string>Vellum: Vellum</string>
+			<key>subtype</key>
+			<string>Vel1</string>
+			<key>type</key>
+			<string>aumu</string>
+			<key>version</key>
+			<integer>256</integer>
+			<key>sandboxSafe</key>
+			<true/>
+			<key>resourceUsage</key>
+			<dict>
+				<key>network.client</key>
+				<false/>
+				<key>temporary-exception.files.all.read-write</key>
+				<false/>
+			</dict>
+			<key>tags</key>
+			<array>
+				<string>Drums</string>
+				<string>Sampler</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
