@@ -1477,7 +1477,7 @@ public:
     static void dragLog (const String& line)
     {
         static int logged = 0;
-        if (logged++ > 60) return;
+        if (logged++ > 600) return;
         auto f = File::getSpecialLocation (File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
         f.getParentDirectory().createDirectory();
         f.appendText (Time::getCurrentTime().toString (true, true) + "  " + line + "\n");
@@ -1492,7 +1492,11 @@ public:
     {
         NSPasteboard* pasteboard = [sender draggingPasteboard];
         NSString* contentType = [pasteboard availableTypeFromArray: getSupportedDragTypes()];
-        dragLog (String (callback == &ComponentPeer::handleDragDrop ? "DROP" : callback == &ComponentPeer::handleDragExit ? "EXIT" : "MOVE")
+        const bool isMove = callback == &ComponentPeer::handleDragMove;
+        static double lastMoveLog = 0.0;
+        const bool logThis = ! isMove || Time::getMillisecondCounterHiRes() - lastMoveLog > 500.0;
+        if (isMove && logThis) lastMoveLog = Time::getMillisecondCounterHiRes();
+        if (logThis) dragLog (String (callback == &ComponentPeer::handleDragDrop ? "DROP" : callback == &ComponentPeer::handleDragExit ? "EXIT" : "MOVE")
                  + " types=" + nsStringToJuce ([[pasteboard types] componentsJoinedByString: nsStringLiteral (",")])
                  + " superview=" + nsStringToJuce ([view superview] ? NSStringFromClass ([[view superview] class]) : nsStringLiteral ("none"))
                  + " window=" + nsStringToJuce ([view window] ? NSStringFromClass ([[view window] class]) : nsStringLiteral ("none")));
@@ -1537,7 +1541,7 @@ public:
         if (! dragInfo.isEmpty())
         {
             const bool handled = (this->*callback) (dragInfo);
-            dragLog (String ("  -> files=") + dragInfo.files.joinIntoString (" | ") + " handled=" + (handled ? "yes" : "no")
+            if (logThis) dragLog (String ("  -> files=") + dragInfo.files.joinIntoString (" | ") + " handled=" + (handled ? "yes" : "no")
                      + " pos=" + String (dragInfo.position.x) + "," + String (dragInfo.position.y));
             return handled;
         }
@@ -2716,15 +2720,20 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
             return owner != nullptr && owner->canBecomeKeyWindow();
         });
 
-        addMethod (@selector (prepareForDragOperation:), [] (id, SEL, id<NSDraggingInfo>) { return YES; });
+        addMethod (@selector (prepareForDragOperation:), [] (id, SEL, id<NSDraggingInfo>) { NSViewComponentPeer::dragLog ("prepareForDragOperation"); return YES; });
 
         addMethod (@selector (performDragOperation:), [] (id self, SEL, id<NSDraggingInfo> sender)
         {
+            NSViewComponentPeer::dragLog ("performDragOperation called");
             auto* owner = getOwner (self);
-            return owner != nullptr && owner->sendDragCallback (&NSViewComponentPeer::handleDragDrop, sender);
+            const BOOL ok = owner != nullptr && owner->sendDragCallback (&NSViewComponentPeer::handleDragDrop, sender);
+            NSViewComponentPeer::dragLog (String ("performDragOperation -> ") + (ok ? "YES" : "NO"));
+            return ok;
         });
 
-        addMethod (@selector (concludeDragOperation:), [] (id, SEL, id<NSDraggingInfo>) {});
+        addMethod (@selector (concludeDragOperation:), [] (id, SEL, id<NSDraggingInfo>) { NSViewComponentPeer::dragLog ("concludeDragOperation"); });
+        addMethod (@selector (draggingEnded:), [] (id, SEL, id<NSDraggingInfo>) { NSViewComponentPeer::dragLog ("draggingEnded"); });
+        addMethod (@selector (wantsPeriodicDraggingUpdates), [] (id, SEL) { return NO; });
 
         addMethod (@selector (isAccessibilityElement), [] (id, SEL) { return NO; });
 
@@ -2769,7 +2778,7 @@ private:
     static void mouseDragged   (id self, SEL, NSEvent* ev)               { callOnOwner (self, &NSViewComponentPeer::redirectMouseDrag, ev); }
     static void asyncMouseDown (id self, SEL, NSEvent* ev)               { callOnOwner (self, &NSViewComponentPeer::redirectMouseDown, ev); }
     static void asyncMouseUp   (id self, SEL, NSEvent* ev)               { callOnOwner (self, &NSViewComponentPeer::redirectMouseUp,   ev); }
-    static void draggingExited (id self, SEL, id<NSDraggingInfo> sender) { callOnOwner (self, &NSViewComponentPeer::sendDragCallback, &NSViewComponentPeer::handleDragExit, sender); }
+    static void draggingExited (id self, SEL, id<NSDraggingInfo> sender) { NSViewComponentPeer::dragLog ("draggingExited"); callOnOwner (self, &NSViewComponentPeer::sendDragCallback, &NSViewComponentPeer::handleDragExit, sender); }
 
     static void mouseDown (id self, SEL s, NSEvent* ev)
     {
@@ -2809,7 +2818,14 @@ private:
     {
         if (auto* owner = getOwner (self))
             if (owner->sendDragCallback (&NSViewComponentPeer::handleDragMove, sender))
-                return NSDragOperationGeneric;
+            {
+                // pick an operation the source actually offers (remote-view bridges reject mismatches)
+                const NSDragOperation mask = [sender draggingSourceOperationMask];
+                if (mask & NSDragOperationCopy)    return NSDragOperationCopy;
+                if (mask & NSDragOperationGeneric) return NSDragOperationGeneric;
+                if (mask & NSDragOperationLink)    return NSDragOperationLink;
+                return mask != NSDragOperationNone ? NSDragOperationGeneric : NSDragOperationNone;
+            }
 
         return NSDragOperationNone;
     }

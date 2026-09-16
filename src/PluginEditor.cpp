@@ -134,8 +134,15 @@ void VellumEditor::fileDragMove (const juce::StringArray&, int x, int y)
 
 void VellumEditor::fileDragExit (const juce::StringArray&) { dropPad = -1; pads.setDropHighlight (-1); }
 
+static void vellumLog (const juce::String& line)
+{
+    auto f = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
+    f.appendText (juce::Time::getCurrentTime().toString (true, true) + "  [editor] " + line + "\n");
+}
+
 void VellumEditor::filesDropped (const juce::StringArray& fileNames, int x, int y)
 {
+    vellumLog ("filesDropped " + fileNames.joinIntoString (" | ") + " at " + juce::String (x) + "," + juce::String (y));
     pads.setDropHighlight (-1); dropPad = -1;
     juce::Array<juce::File> files;
     for (const auto& f : fileNames) files.add (juce::File (f));

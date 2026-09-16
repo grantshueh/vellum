@@ -448,7 +448,13 @@ void VellumProcessor::loadFiles (const juce::Array<juce::File>& filesIn, int sta
         pool.addJob (new AnalysisJob (weak, [=] (VellumProcessor& proc)
         {
             std::vector<float> mono; double sr = 48000.0;
-            if (! proc.readAudioFile (f, mono, sr))
+            const bool ok = proc.readAudioFile (f, mono, sr);
+            {
+                auto log = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
+                log.appendText (juce::Time::getCurrentTime().toString (true, true) + "  [load] pad " + juce::String (padIndex + 1) + " " + f.getFullPathName()
+                                + (ok ? " read OK (" + juce::String (mono.size()) + " smp)" : " READ FAILED exists=" + juce::String ((int) f.existsAsFile())) + "\n");
+            }
+            if (! ok)
             {
                 juce::MessageManager::callAsync ([weak, padIndex]
                 {

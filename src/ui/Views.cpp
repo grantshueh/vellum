@@ -273,7 +273,14 @@ void PadCell::mouseDown (const juce::MouseEvent& e)
 {
     if (menuArea().contains (e.getPosition()) || e.mods.isPopupMenu()) { showMenu(); return; }
     if (onSelect) onSelect (index);
-    if (! model) return;
+    if (! model)
+    {
+        if (analyzing) return;
+        chooser = std::make_unique<juce::FileChooser> ("Load sample(s)", juce::File(), "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3;*.m4a;*.caf");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems,
+                              [this] (const juce::FileChooser& fc) { auto files = fc.getResults(); if (! files.isEmpty()) processor.loadFiles (files, index); });
+        return;
+    }
     auto wa = waveArea();
     float vel = 0.8f;
     if (wa.contains (e.getPosition())) vel = juce::jlimit (0.15f, 1.0f, 1.0f - (float) (e.y - wa.getY()) / (float) wa.getHeight());
