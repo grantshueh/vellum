@@ -44,7 +44,7 @@
 			<key>version</key>
 			<integer>256</integer>
 			<key>sandboxSafe</key>
-			<true/>
+			<false/>
 			<key>resourceUsage</key>
 			<dict>
 				<key>network.client</key>
