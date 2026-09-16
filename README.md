@@ -13,7 +13,7 @@ x̂  = D(z')     modal bank + phase-coherent residual playback + re-rendered noi
 Δz = 0 reproduces the source at 95–100 dB SNR (see `make render-test`), so the model is
 lossless at rest; every perturbation is a deliberate, physically-motivated departure.
 
-## Build (Command Line Tools only, no Xcode.app / CMake)
+## Build (Command Line Tools only)
 
 ```bash
 make -j10 au standalone      # build/Vellum.component + build/Vellum.app
