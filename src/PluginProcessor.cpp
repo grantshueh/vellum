@@ -458,7 +458,8 @@ void VellumProcessor::loadFiles (const juce::Array<juce::File>& filesIn, int sta
             {
                 juce::MessageManager::callAsync ([weak, padIndex]
                 {
-                    if (auto* p = weak.get()) { p->pads[(size_t) padIndex].analyzing = false; p->pads[(size_t) padIndex].name = defaultPadName (padIndex); p->padsChanged.sendChangeMessage(); }
+                    // leave a visible trace instead of silently reverting (sandboxed hosts can stat but not read)
+                    if (auto* p = weak.get()) { p->pads[(size_t) padIndex].analyzing = false; p->pads[(size_t) padIndex].name = "Can't read file"; p->padsChanged.sendChangeMessage(); }
                 });
                 return;
             }
