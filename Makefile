@@ -249,3 +249,7 @@ $(BUILD)/ui_snapshot: tests/ui_snapshot.cpp $(UI_SNAP_OBJS)
 	$(CXX) $(OUR_CXXFLAGS) $(DEFS) $(SA_DEFS) $< $(UI_SNAP_OBJS) $(FRAMEWORKS) -o $@
 ui-snapshot: $(BUILD)/ui_snapshot
 .PHONY: ui-snapshot
+$(BUILD)/drop_test: tests/drop_test.cpp $(UI_SNAP_OBJS)
+	$(CXX) $(OUR_CXXFLAGS) $(DEFS) $(SA_DEFS) $< $(UI_SNAP_OBJS) $(FRAMEWORKS) -o $@
+$(BUILD)/drag_harness: tests/drag_harness.mm $(UI_SNAP_OBJS)
+	$(CXX) $(OUR_CXXFLAGS) $(DEFS) $(SA_DEFS) -ObjC++ -fobjc-arc $< $(UI_SNAP_OBJS) $(FRAMEWORKS) -o $@

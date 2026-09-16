@@ -1465,7 +1465,21 @@ public:
             JUCE_END_IGNORE_WARNINGS_GCC_LIKE
         }();
 
-        return [NSArray arrayWithObjects: type, (NSString*) kPasteboardTypeFileURLPromise, NSPasteboardTypeString, nil];
+        // [Vellum patch] also accept the legacy filenames type (Logic's browser and other older Apple
+        // code still write it) and generic URLs.
+        return [NSArray arrayWithObjects: type, legacyFilenamesType(), (NSString*) kPasteboardTypeFileURLPromise, NSPasteboardTypeURL, NSPasteboardTypeString, nil];
+    }
+
+    static NSString* legacyFilenamesType() { return nsStringLiteral ("NSFilenamesPboardType"); }
+
+    static void logUnsupportedDrag (NSPasteboard* pasteboard)
+    {
+        static int logged = 0;
+        if (logged++ > 20) return;
+        auto f = File::getSpecialLocation (File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
+        f.getParentDirectory().createDirectory();
+        f.appendText (Time::getCurrentTime().toString (true, true) + "  pasteboard types: "
+                      + nsStringToJuce ([[pasteboard types] description]) + "\n");
     }
 
     BOOL sendDragCallback (bool (ComponentPeer::* callback) (const DragInfo&), id <NSDraggingInfo> sender)
@@ -1474,7 +1488,10 @@ public:
         NSString* contentType = [pasteboard availableTypeFromArray: getSupportedDragTypes()];
 
         if (contentType == nil)
+        {
+            logUnsupportedDrag (pasteboard);
             return false;
+        }
 
         const auto p = localToGlobal (convertToPointFloat ([view convertPoint: [sender draggingLocation] fromView: nil]));
 
@@ -1486,10 +1503,84 @@ public:
         else
             dragInfo.files = getDroppedFiles (pasteboard, contentType);
 
+        // [Vellum patch] file *promises* (Splice, some browsers / DAWs): no URLs exist yet. While the
+        // drag is in flight we report placeholder names with the promised extensions so targets can
+        // accept; on drop we receive the files into a cache folder and deliver the real paths.
+        if (dragInfo.files.isEmpty() && [[pasteboard types] containsObject: (NSString*) kPasteboardTypeFileURLPromise])
+        {
+            NSArray* receivers = [pasteboard readObjectsForClasses: @[[NSFilePromiseReceiver class]] options: nil];
+
+            if ([receivers count] > 0)
+            {
+                if (callback == &ComponentPeer::handleDragDrop)
+                {
+                    receivePromisedFiles (receivers, dragInfo.position);
+                    return true;
+                }
+
+                for (NSFilePromiseReceiver* r in receivers)
+                    for (NSString* uti in [r fileTypes])
+                        dragInfo.files.add ("promised." + utiToExtension (uti));
+            }
+        }
+
         if (! dragInfo.isEmpty())
             return (this->*callback) (dragInfo);
 
         return false;
+    }
+
+    static String utiToExtension (NSString* uti)
+    {
+        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wdeprecated-declarations")
+        CFStringRef ext = UTTypeCopyPreferredTagWithClass ((CFStringRef) uti, kUTTagClassFilenameExtension);
+        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+        String result = ext != nullptr ? nsStringToJuce ((NSString*) ext) : String ("wav");
+        if (ext != nullptr) CFRelease (ext);
+        return result.isEmpty() ? String ("wav") : result;
+    }
+
+    void receivePromisedFiles (NSArray* receivers, Point<int> position)
+    {
+        auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("DroppedFiles")
+                     .getChildFile (String::toHexString (Time::currentTimeMillis()));
+        dir.createDirectory();
+        NSURL* dest = [NSURL fileURLWithPath: juceStringToNS (dir.getFullPathName()) isDirectory: YES];
+        NSOperationQueue* queue = [[NSOperationQueue alloc] init];
+
+        auto files = std::make_shared<StringArray>();
+        auto pending = std::make_shared<std::atomic<int>> ((int) [receivers count]);
+        auto lock = std::make_shared<CriticalSection>();
+        Component::SafePointer<Component> safeComp (&component);
+
+        auto finishOne = [=]
+        {
+            if (pending->fetch_sub (1) != 1) return;
+            MessageManager::callAsync ([=]
+            {
+                if (safeComp == nullptr) return;
+                if (auto* peer = safeComp->getPeer())
+                {
+                    ComponentPeer::DragInfo info;
+                    info.position = position;
+                    { const ScopedLock sl (*lock); info.files = *files; }
+                    if (! info.files.isEmpty()) peer->handleDragDrop (info);
+                }
+            });
+        };
+
+        for (NSFilePromiseReceiver* r in receivers)
+        {
+            const int expected = (int) [[r fileTypes] count];
+            auto left = std::make_shared<std::atomic<int>> (std::max (1, expected));
+            [r receivePromisedFilesAtDestination: dest options: @{} operationQueue: queue
+                                          reader: ^(NSURL* fileURL, NSError* error)
+            {
+                if (error == nil && fileURL != nil) { const ScopedLock sl (*lock); files->add (nsStringToJuce ([fileURL path])); }
+                if (left->fetch_sub (1) == 1) finishOne();
+            }];
+        }
+        [queue release];
     }
 
     StringArray getDroppedFiles (NSPasteboard* pasteboard, NSString* contentType)
@@ -1532,7 +1623,26 @@ public:
                 if ([url isFileURL])
                     files.add (nsStringToJuce ([url path]));
             }
+
+            // [Vellum patch] legacy filenames property list, and file URLs written as plain strings
+            if (files.isEmpty() && [[pasteboard types] containsObject: legacyFilenamesType()])
+            {
+                id list = [pasteboard propertyListForType: legacyFilenamesType()];
+                if ([list isKindOfClass: [NSArray class]])
+                    for (id path in (NSArray*) list)
+                        if ([path isKindOfClass: [NSString class]] && File::isAbsolutePath (nsStringToJuce ((NSString*) path)))
+                            files.add (nsStringToJuce ((NSString*) path));
+            }
+            if (files.isEmpty())
+                for (NSString* t in [pasteboard types])
+                    if ([t isEqualToString: NSPasteboardTypeURL] || [t isEqualToString: nsStringLiteral ("public.file-url")])
+                        if (NSString* str = [pasteboard stringForType: t])
+                            if (NSURL* url = [NSURL URLWithString: str])
+                                if ([url isFileURL]) files.add (nsStringToJuce ([url path]));
         }
+
+        if (files.isEmpty() && ! [contentType isEqualToString: (NSString*) kPasteboardTypeFileURLPromise])
+            logUnsupportedDrag (pasteboard);
 
         return files;
     }
