@@ -49,6 +49,7 @@ private:
     juce::TooltipWindow tooltips { this, 600 };
     bool advanced = false;
     int dropPad = -1;
+    int lastLoopVersion = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VellumEditor)
 };

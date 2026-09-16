@@ -63,7 +63,7 @@ public:
         bool analyzing = false;
     };
     const PadInfo& pad (int i) const { return pads[(size_t) i]; }
-    void loadFiles (const juce::Array<juce::File>& files, int startPad);   // bulk drop; loops go to the slicer
+    void loadFiles (const juce::Array<juce::File>& files, int startPad, bool allowLoopDetection = true);   // bulk drop; loops may go to the slicer
     void loadFileToPad (const juce::File& file, int padIndex);
     void clearPad (int padIndex);
     void renamePad (int padIndex, const juce::String& name);

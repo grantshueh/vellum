@@ -416,7 +416,7 @@ void VellumProcessor::loadFileToPad (const juce::File& file, int padIndex)
     loadFiles (files, padIndex);
 }
 
-void VellumProcessor::loadFiles (const juce::Array<juce::File>& filesIn, int startPad)
+void VellumProcessor::loadFiles (const juce::Array<juce::File>& filesIn, int startPad, bool allowLoopDetection)
 {
     // flatten folders, keep only readable audio, natural sort
     juce::Array<juce::File> files;
@@ -462,21 +462,24 @@ void VellumProcessor::loadFiles (const juce::Array<juce::File>& filesIn, int sta
                 });
                 return;
             }
-            // long file with several onsets -> it is a loop: send it to the slicer instead of a pad
+            // long file with many strong hits spread across it -> a loop: send it to the slicer instead of a pad
             bool isLoop = false;
-            if (mono.size() > (size_t) (sr * 1.5))
+            if (allowLoopDetection && mono.size() > (size_t) (sr * 1.5))
             {
-                // a loop has several *strong* hits; a long one-shot (808, cymbal) only has weak flux in its tail
                 auto onsets = detectOnsets (mono.data(), (int) mono.size(), sr, 0.5f);
                 float globalPeak = 0.0f; for (float v : mono) globalPeak = std::max (globalPeak, std::fabs (v));
-                int strong = 0;
+                int strong = 0, lastStrong = 0;
                 for (int o : onsets)
                 {
                     float pk = 0.0f;
                     for (int i = o; i < std::min ((int) mono.size(), o + (int) (0.03 * sr)); ++i) pk = std::max (pk, std::fabs (mono[(size_t) i]));
-                    if (pk > 0.25f * globalPeak) ++strong;
+                    if (pk > 0.25f * globalPeak) { ++strong; lastStrong = o; }
                 }
-                isLoop = strong >= 4;
+                isLoop = strong >= 6 && lastStrong > (int) (mono.size() * 0.4);
+            }
+            {
+                auto log = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
+                log.appendText (juce::Time::getCurrentTime().toString (true, true) + "  [load] " + name + (isLoop ? " -> LOOP (slicer)" : " -> one-shot, analysing") + "\n");
             }
             if (isLoop)
             {
@@ -495,10 +498,21 @@ void VellumProcessor::loadFiles (const juce::Array<juce::File>& filesIn, int sta
                 return;
             }
             AnalysisOptions opt; opt.variantSeed = 1234 + padIndex * 31;
+            const double t0 = juce::Time::getMillisecondCounterHiRes();
             auto model = analyzeDrum (mono.data(), (int) mono.size(), sr, name.toStdString(), path.toStdString(), opt);
+            {
+                auto log = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
+                log.appendText (juce::Time::getCurrentTime().toString (true, true) + "  [analysis] " + name + ": " + juce::String (model->modes.size()) + " modes, valid="
+                                + juce::String ((int) model->isValid()) + ", " + juce::String (juce::Time::getMillisecondCounterHiRes() - t0, 0) + " ms\n");
+            }
             juce::MessageManager::callAsync ([weak, model, padIndex, name, path]
             {
-                if (auto* p = weak.get()) p->installModel (padIndex, model, name, path, -1);
+                if (auto* p = weak.get())
+                {
+                    p->installModel (padIndex, model, name, path, -1);
+                    auto log = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
+                    log.appendText (juce::Time::getCurrentTime().toString (true, true) + "  [install] pad " + juce::String (padIndex + 1) + " <- " + name + "\n");
+                }
             });
         }), true);
     }

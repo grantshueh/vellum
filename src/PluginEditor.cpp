@@ -4,6 +4,13 @@ namespace vellum {
 
 using namespace ui;
 
+static void vellumLog (const juce::String& line)
+{
+    auto f = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
+    f.appendText (juce::Time::getCurrentTime().toString (true, true) + "  [editor] " + line + "\n");
+}
+
+
 VellumEditor::VellumEditor (VellumProcessor& p)
     : AudioProcessorEditor (&p), processor (p), pads (p), tabs (p), samplesView (p), kitsView (p), slicerView (p), grooveView (p), advancedView (p)
 {
@@ -41,6 +48,8 @@ VellumEditor::VellumEditor (VellumProcessor& p)
     showTab (0);
 
     processor.padsChanged.addChangeListener (this);
+    processor.slicerChanged.addChangeListener (this);
+    lastLoopVersion = processor.loopVersion.load();
     setResizable (true, true);
     getConstrainer()->setFixedAspectRatio ((double) kBaseW / (double) kBaseH);
     setResizeLimits (700, 700 * kBaseH / kBaseW, 2000, 2000 * kBaseH / kBaseW);
@@ -51,6 +60,7 @@ VellumEditor::VellumEditor (VellumProcessor& p)
 VellumEditor::~VellumEditor()
 {
     processor.padsChanged.removeChangeListener (this);
+    processor.slicerChanged.removeChangeListener (this);
     setLookAndFeel (nullptr);
 }
 
@@ -97,8 +107,15 @@ void VellumEditor::timerCallback()
     if (tabs.play.getToggleState() != processor.internalPlay.load()) tabs.play.setToggleState (processor.internalPlay.load(), juce::dontSendNotification);
 }
 
-void VellumEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+void VellumEditor::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
+    if (source == &processor.slicerChanged)
+    {
+        const int v = processor.loopVersion.load();
+        if (v != lastLoopVersion) { lastLoopVersion = v; showTab (2); }   // a new loop arrived: show it
+        return;
+    }
+    vellumLog ("pads refreshed");
     pads.refresh();
     header.setKitName (processor.getKitName());
     samplesView.showPad (pads.selectedPad());
@@ -134,12 +151,6 @@ void VellumEditor::fileDragMove (const juce::StringArray&, int x, int y)
 
 void VellumEditor::fileDragExit (const juce::StringArray&) { dropPad = -1; pads.setDropHighlight (-1); }
 
-static void vellumLog (const juce::String& line)
-{
-    auto f = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("drag-log.txt");
-    f.appendText (juce::Time::getCurrentTime().toString (true, true) + "  [editor] " + line + "\n");
-}
-
 void VellumEditor::filesDropped (const juce::StringArray& fileNames, int x, int y)
 {
     vellumLog ("filesDropped " + fileNames.joinIntoString (" | ") + " at " + juce::String (x) + "," + juce::String (y));
@@ -154,8 +165,9 @@ void VellumEditor::filesDropped (const juce::StringArray& fileNames, int x, int 
         processor.loadLoopFile (files[0]);
         return;
     }
-    const int startPad = pads.getBounds().contains (p) ? pads.padAt (p.x - pads.getX()) : 0;
-    processor.loadFiles (files, startPad);
+    const bool onPads = pads.getBounds().contains (p);
+    const int startPad = onPads ? pads.padAt (p.x - pads.getX()) : 0;
+    processor.loadFiles (files, startPad, ! onPads);   // a drop onto a pad always means "this one-shot goes here"
 }
 
 } // namespace vellum
