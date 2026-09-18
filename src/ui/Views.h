@@ -200,6 +200,22 @@ private:
 };
 
 // ---------------------------------------------------------------------------
+// drag this out to a DAW track to drop a .mid of the current pattern
+class MidiDragButton : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    std::function<juce::File()> makeFile;   // writes and returns the file to drag
+    std::function<void()> onClick;          // plain click -> export dialog
+    void paint (juce::Graphics& g) override;
+    void mouseDown (const juce::MouseEvent&) override { dragging = false; }
+    void mouseDrag (const juce::MouseEvent& e) override;
+    void mouseUp (const juce::MouseEvent& e) override;
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
+private:
+    bool dragging = false;
+};
+
 class GrooveView : public juce::Component
 {
 public:
@@ -210,15 +226,18 @@ public:
     void mouseDrag (const juce::MouseEvent& e) override;
     void mouseUp (const juce::MouseEvent& e) override;
     void tick();
-    void refreshNames() { repaint(); }
+    void refreshNames() { syncControls(); repaint(); }
 private:
     juce::Rectangle<int> gridArea() const;
     bool cellAt (juce::Point<int> p, int& pad, int& step) const;
     VellumProcessor& processor;
-    juce::ComboBox presets;
-    juce::TextButton lengthBtn { "16" }, clearBtn { "clear" };
+    juce::ComboBox presets, lengthBox;
+    juce::TextButton tripletBtn { "1/12" }, clearBtn { "clear" };
+    MidiDragButton midiDrag;
     Knob swing;
     juce::Label tempo;
+    std::unique_ptr<juce::FileChooser> chooser;
+    void syncControls();
     int playStep = -1;
     int pressPad = -1, pressStep = -1; bool pressWasOn = false, dragged = false; float pressVel = 0.8f;
 };

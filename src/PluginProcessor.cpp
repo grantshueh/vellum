@@ -46,6 +46,7 @@ VellumProcessor::VellumProcessor()
     formatManager.registerBasicFormats();
     retired.reserve (256);
     seqTriggers.reserve (256);
+    pendingOffs.reserve (256);
     for (int i = 0; i < kNumPads; ++i)
     {
         pads[(size_t) i].name = defaultPadName (i);
@@ -225,6 +226,23 @@ void VellumProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     else if (! internalPlay.load()) clock.reset();
     for (const auto& t : seqTriggers) startVoice (t.pad, t.vel, t.sampleOffset, s);
 
+    // ---- MIDI output of the groove (so hosts can record it), with proper note-offs
+    juce::MidiBuffer midiOut;
+    {
+        const int noteLen = std::max (16, (int) (pattern.stepBeats() * 0.9 * 60.0 / bpm * sampleRate));
+        for (auto it = pendingOffs.begin(); it != pendingOffs.end();)
+        {
+            if (it->samplesLeft < n) { midiOut.addEvent (juce::MidiMessage::noteOff (1, it->note), std::max (0, it->samplesLeft)); it = pendingOffs.erase (it); }
+            else { it->samplesLeft -= n; ++it; }
+        }
+        for (const auto& t : seqTriggers)
+        {
+            const int note = kBaseNote + t.pad;
+            midiOut.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) juce::jlimit (1, 127, (int) std::lround (t.vel * 127.0f))), t.sampleOffset);
+            if (pendingOffs.size() < pendingOffs.capacity()) pendingOffs.push_back ({ note, t.sampleOffset + noteLen });
+        }
+    }
+
     // ---- MIDI
     for (const auto meta : midi)
     {
@@ -310,7 +328,7 @@ void VellumProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     else if (buffer.getNumChannels() == 1) { buffer.copyFrom (0, 0, L, n); buffer.addFrom (0, 0, R, n); buffer.applyGain (0.5f); }
 
     timeSeconds += n / sampleRate;
-    midi.clear();
+    midi.swapWith (midiOut);
 }
 
 // ---------------------------------------------------------------------------
@@ -631,6 +649,7 @@ void VellumProcessor::extractSlicesToPads (bool alsoGroove)
     {
         Pattern p;
         p.length = juce::jlimit (16, kMaxSteps, sliceResult.bars * 16);
+        p.triplet = false;
         p.name = loopName.toStdString();
         const double stepSec = 60.0 / (sliceResult.bpm * 4.0);
         float maxE = 1e-6f; for (const auto& s : sliceResult.slices) maxE = std::max (maxE, s.energy);
@@ -648,6 +667,43 @@ void VellumProcessor::extractSlicesToPads (bool alsoGroove)
 
 // ---------------------------------------------------------------------------
 // sequencer
+juce::File VellumProcessor::midiExportFolder() const
+{
+    auto f = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Vellum").getChildFile ("MIDI");
+    f.createDirectory();
+    return f;
+}
+
+juce::File VellumProcessor::exportPatternMidi (const juce::File& dest) const
+{
+    const int tpq = 960;
+    const double bpm = lastBpm.load() > 0 ? lastBpm.load() : 120.0;
+    juce::MidiMessageSequence seq;
+    seq.addEvent (juce::MidiMessage::tempoMetaEvent ((int) std::lround (60000000.0 / bpm)), 0.0);
+    seq.addEvent (juce::MidiMessage::timeSignatureMetaEvent (4, 4), 0.0);
+    const double stepBeats = pattern.stepBeats();
+    for (int pad = 0; pad < kNumPads; ++pad)
+        for (int s = 0; s < pattern.length; ++s)
+        {
+            const Step& st = pattern.steps[pad][s];
+            if (! st.on) continue;
+            const double t = (s * stepBeats + ((s & 1) ? pattern.swing * stepBeats * 0.5 : 0.0)) * tpq;
+            const int note = kBaseNote + pad;
+            const juce::uint8 vel = (juce::uint8) juce::jlimit (1, 127, (int) std::lround (st.vel * 127.0f));
+            seq.addEvent (juce::MidiMessage::noteOn (1, note, vel), t);
+            seq.addEvent (juce::MidiMessage::noteOff (1, note), t + stepBeats * 0.9 * tpq);
+        }
+    seq.addEvent (juce::MidiMessage::endOfTrack(), pattern.loopBeats() * tpq);
+    seq.updateMatchedPairs();
+    juce::MidiFile mf;
+    mf.setTicksPerQuarterNote (tpq);
+    mf.addTrack (seq);
+    dest.deleteFile();
+    juce::FileOutputStream os (dest);
+    if (os.openedOk()) mf.writeTo (os, 0);
+    return dest;
+}
+
 void VellumProcessor::applyPreset (int index)
 {
     const auto& presets = groovePresets();
@@ -709,6 +765,7 @@ juce::ValueTree VellumProcessor::patternToTree() const
 {
     juce::ValueTree t ("PATTERN");
     t.setProperty ("length", pattern.length, nullptr);
+    t.setProperty ("triplet", pattern.triplet, nullptr);
     t.setProperty ("name", juce::String (pattern.name), nullptr);
     for (int pad = 0; pad < kNumPads; ++pad)
     {
@@ -727,6 +784,7 @@ void VellumProcessor::patternFromTree (const juce::ValueTree& t)
 {
     Pattern p;
     p.length = juce::jlimit (1, kMaxSteps, (int) t.getProperty ("length", 16));
+    p.triplet = (bool) t.getProperty ("triplet", false);
     p.name = t.getProperty ("name", "Pattern").toString().toStdString();
     for (const auto& r : t)
     {

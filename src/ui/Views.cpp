@@ -795,20 +795,88 @@ void SlicerView::mouseDown (const juce::MouseEvent& e)
 }
 
 // ---------------------------------------------------------------------------
+// MidiDragButton
+void MidiDragButton::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat().reduced (0.5f);
+    const bool hover = isMouseOver();
+    g.setColour (hover ? juce::Colour (0xff2b2b30) : juce::Colour (0xff222226)); g.fillRoundedRectangle (r, 3.0f);
+    g.setColour (hover ? accentDim : line); g.drawRoundedRectangle (r, 3.0f, 1.0f);
+    // little MIDI-plug glyph: five dots in an arc
+    const float cx = r.getX() + 16.0f, cy = r.getCentreY();
+    g.setColour (hover ? accent : textDim);
+    for (int i = 0; i < 5; ++i)
+    {
+        const float a = -2.2f + i * 1.1f;
+        g.fillEllipse (cx + 5.0f * std::sin (a) - 1.2f, cy - 5.0f * std::cos (a) - 1.2f, 2.4f, 2.4f);
+    }
+    g.setFont (font (10.0f)); g.setColour (hover ? text : textDim);
+    drawSpacedText (g, "DRAG MIDI TO TRACK", r.withTrimmedLeft (30.0f), 1.1f, juce::Justification::centredLeft);
+}
+
+void MidiDragButton::mouseDrag (const juce::MouseEvent& e)
+{
+    if (dragging || e.getDistanceFromDragStart() < 6 || ! makeFile) return;
+    dragging = true;
+    auto f = makeFile();
+    if (f.existsAsFile())
+        juce::DragAndDropContainer::performExternalDragDropOfFiles (juce::StringArray (f.getFullPathName()), false, this);
+}
+
+void MidiDragButton::mouseUp (const juce::MouseEvent& e)
+{
+    if (! dragging && e.getDistanceFromDragStart() < 6 && onClick) onClick();
+}
+
+// ---------------------------------------------------------------------------
 // GrooveView
 GrooveView::GrooveView (VellumProcessor& p) : processor (p), swing (p.apvts, "seqSwing", "Swing", false)
 {
-    int id = 1;
-    for (const auto& pr : groovePresets()) presets.addItem (pr.name, id++);
+    int id = 1; juce::String lastRegion;
+    for (const auto& pr : groovePresets())
+    {
+        if (juce::String (pr.region) != lastRegion) { lastRegion = pr.region; presets.addSectionHeading (lastRegion); }
+        presets.addItem (pr.name, id++);
+    }
     presets.setTextWhenNothingSelected ("presets");
-    presets.onChange = [this] { const int i = presets.getSelectedId() - 1; if (i >= 0) { processor.applyPreset (i); lengthBtn.setButtonText (juce::String (processor.getPattern().length)); repaint(); } };
+    presets.onChange = [this] { const int i = presets.getSelectedId() - 1; if (i >= 0) { processor.applyPreset (i); syncControls(); repaint(); } };
     addAndMakeVisible (presets);
-    lengthBtn.onClick = [this] { auto& pat = processor.getPattern(); pat.length = pat.length == 16 ? 32 : 16; lengthBtn.setButtonText (juce::String (pat.length)); repaint(); };
+
+    for (int len : { 8, 12, 16, 18, 20, 24, 32 }) lengthBox.addItem (juce::String (len), len);
+    lengthBox.onChange = [this] { if (lengthBox.getSelectedId() > 0) { processor.getPattern().length = lengthBox.getSelectedId(); repaint(); } };
+    addAndMakeVisible (lengthBox);
+    tripletBtn.setClickingTogglesState (true);
+    tripletBtn.setTooltip ("Triplet grid: each step is a 12th note (12/8 feel) instead of a 16th");
+    tripletBtn.onClick = [this] { processor.getPattern().triplet = tripletBtn.getToggleState(); repaint(); };
+    addAndMakeVisible (tripletBtn);
     clearBtn.onClick = [this] { processor.getPattern().clear(); processor.getPattern().name = "Empty"; presets.setSelectedId (0, juce::dontSendNotification); repaint(); };
-    addAndMakeVisible (lengthBtn); addAndMakeVisible (clearBtn); addAndMakeVisible (swing);
+    addAndMakeVisible (clearBtn); addAndMakeVisible (swing);
+
+    midiDrag.makeFile = [this]
+    {
+        const juce::String name = juce::File::createLegalFileName (juce::String (processor.getPattern().name) + " " + juce::String (processor.currentBpm(), 0) + "bpm");
+        return processor.exportPatternMidi (processor.midiExportFolder().getChildFile (name + ".mid"));
+    };
+    midiDrag.onClick = [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Export pattern as MIDI", processor.midiExportFolder().getChildFile (juce::String (processor.getPattern().name) + ".mid"), "*.mid");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this] (const juce::FileChooser& fc) { if (fc.getResult() != juce::File()) processor.exportPatternMidi (fc.getResult().withFileExtension ("mid")); });
+    };
+    midiDrag.setTooltip ("Drag onto a Logic track to drop the groove as a MIDI region; click to export a .mid file");
+    addAndMakeVisible (midiDrag);
+
     tempo.setFont (font (10.5f)); tempo.setColour (juce::Label::textColourId, textDim); tempo.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (tempo);
-    lengthBtn.setButtonText (juce::String (processor.getPattern().length));
+    syncControls();
+}
+
+void GrooveView::syncControls()
+{
+    const auto& pat = processor.getPattern();
+    lengthBox.setSelectedId (pat.length, juce::dontSendNotification);
+    if (lengthBox.getSelectedId() != pat.length) lengthBox.setText (juce::String (pat.length), juce::dontSendNotification);
+    tripletBtn.setToggleState (pat.triplet, juce::dontSendNotification);
 }
 
 juce::Rectangle<int> GrooveView::gridArea() const { return getLocalBounds().reduced (40, 0).withTrimmedTop (44).withTrimmedBottom (14).withTrimmedLeft (86); }
@@ -816,13 +884,17 @@ juce::Rectangle<int> GrooveView::gridArea() const { return getLocalBounds().redu
 void GrooveView::resized()
 {
     auto top = getLocalBounds().reduced (40, 0).removeFromTop (40).withTrimmedTop (8);
-    presets.setBounds (top.removeFromLeft (170).reduced (0, 4));
+    presets.setBounds (top.removeFromLeft (200).reduced (0, 4));
     top.removeFromLeft (10);
-    lengthBtn.setBounds (top.removeFromLeft (44).reduced (0, 4));
+    lengthBox.setBounds (top.removeFromLeft (58).reduced (0, 4));
+    top.removeFromLeft (6);
+    tripletBtn.setBounds (top.removeFromLeft (44).reduced (0, 4));
     top.removeFromLeft (10);
-    clearBtn.setBounds (top.removeFromLeft (70).reduced (0, 4));
-    top.removeFromLeft (16);
+    clearBtn.setBounds (top.removeFromLeft (64).reduced (0, 4));
+    top.removeFromLeft (12);
     swing.setBounds (top.removeFromLeft (60).withHeight (52).withY (top.getY() - 8));
+    top.removeFromLeft (12);
+    midiDrag.setBounds (top.removeFromLeft (190).reduced (0, 4));
     tempo.setBounds (top);
 }
 
@@ -851,7 +923,7 @@ void GrooveView::paint (juce::Graphics& g)
         for (int s = 0; s < len; ++s)
         {
             auto cell = juce::Rectangle<float> ((float) ga.getX() + s * cw, y, cw, rh).reduced (1.5f, 1.5f);
-            const bool beat = (s / 4) % 2 == 0;
+            const bool beat = (s / (pat.triplet ? 3 : 4)) % 2 == 0;
             g.setColour (juce::Colour (beat ? 0xff222226 : 0xff1e1e22));
             g.fillRoundedRectangle (cell, 2.0f);
             const Step& st = pat.steps[pad][s];
@@ -864,7 +936,8 @@ void GrooveView::paint (juce::Graphics& g)
         }
     }
     g.setFont (font (10.0f)); g.setColour (textDim);
-    drawSpacedText (g, juce::String (pat.name).toUpperCase(), juce::Rectangle<float> ((float) ga.getX(), 0.0f, 300.0f, 12.0f), 1.2f, juce::Justification::centredLeft);
+    drawSpacedText (g, juce::String (pat.name).toUpperCase() + "  " + dot() + "  " + juce::String (pat.length) + (pat.triplet ? " x 1/12" : " x 1/16"),
+                    juce::Rectangle<float> ((float) ga.getX(), 0.0f, 400.0f, 12.0f), 1.2f, juce::Justification::centredLeft);
 }
 
 void GrooveView::mouseDown (const juce::MouseEvent& e)

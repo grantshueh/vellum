@@ -23,18 +23,23 @@ struct Step
 
 struct Pattern
 {
-    int   length = 16;        // 16 or 32 sixteenth steps
+    int   length = 16;        // 1..32 steps
+    bool  triplet = false;    // false: step = 1/16 note, true: step = 1/12 note (8th-note triplet / 12/8 feel)
     float swing = 0.0f;       // 0..1  (50% .. 75%)
     Step  steps[kNumPads][kMaxSteps];
     std::string name = "Empty";
 
+    double stepBeats() const { return triplet ? 1.0 / 3.0 : 0.25; }
+    double loopBeats() const { return length * stepBeats(); }
     void clear() { for (auto& row : steps) for (auto& s : row) s = Step{}; }
 };
 
 struct GroovePreset
 {
     const char* name;
+    const char* region;           // menu section
     int length;
+    bool triplet;
     float swing;
     const char* rows[kNumPads];   // 'X' 1.0, 'x' 0.8, 'o' 0.55, '-' 0.35, '.' off ; nullptr = empty row
 };

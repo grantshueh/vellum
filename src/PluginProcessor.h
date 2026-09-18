@@ -37,7 +37,7 @@ public:
     bool hasEditor() const override { return true; }
     const juce::String getName() const override { return "Vellum"; }
     bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return false; }
+    bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 8.0; }
     int getNumPrograms() override { return 1; }
@@ -99,6 +99,8 @@ public:
     // ---- sequencer
     Pattern& getPattern() { return pattern; }
     void applyPreset (int index);
+    juce::File exportPatternMidi (const juce::File& dest) const;   // Standard MIDI File of the current pattern at the current tempo
+    juce::File midiExportFolder() const;
     std::atomic<bool> internalPlay { false };
     int currentStep() const { return clock.currentStep(); }
     double currentBpm() const { return lastBpm.load(); }
@@ -158,6 +160,8 @@ private:
     Pattern pattern;
     GrooveClock clock;
     std::vector<Trigger> seqTriggers;
+    struct PendingOff { int note; int samplesLeft; };
+    std::vector<PendingOff> pendingOffs;
     std::atomic<double> lastBpm { 120.0 };
     std::atomic<bool> hostPlayingFlag { false };
 

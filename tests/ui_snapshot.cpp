@@ -49,7 +49,13 @@ int main (int argc, char** argv)
     save ("ui_samples.png");
     ed->debugShowTab (1); pump (60); save ("ui_kits.png");
     ed->debugShowTab (2); pump (60); save ("ui_slicer.png");
-    ed->debugShowTab (3); proc.applyPreset (5); pump (60); save ("ui_groove.png");
+    ed->debugShowTab (3); proc.applyPreset (32); pump (60); save ("ui_groove.png");
+    {
+        auto mid = proc.exportPatternMidi (outDir.getChildFile ("pattern.mid"));
+        juce::FileInputStream in (mid); juce::MidiFile mf; mf.readFrom (in);
+        int notes = 0; for (int t = 0; t < mf.getNumTracks(); ++t) for (int i = 0; i < mf.getTrack (t)->getNumEvents(); ++i) if (mf.getTrack (t)->getEventPointer (i)->message.isNoteOn()) ++notes;
+        std::printf ("midi export: %s, %d tracks, %d note-ons, tpq %d\n", mid.getFileName().toRawUTF8(), mf.getNumTracks(), notes, (int) mf.getTimeFormat());
+    }
     ed->debugSetAdvanced (true); pump (60); save ("ui_advanced.png");
     ed.reset();
     return 0;
