@@ -973,6 +973,8 @@ void GrooveView::mouseUp (const juce::MouseEvent&)
 
 void GrooveView::tick()
 {
+    const auto& pat = processor.getPattern();
+    if (lengthBox.getSelectedId() != pat.length || tripletBtn.getToggleState() != pat.triplet) syncControls();
     const int s = processor.currentStep();
     if (s != playStep) { playStep = s; repaint (gridArea()); }
     tempo.setText (juce::String (processor.currentBpm(), 1) + " BPM  " + dot() + "  " + (processor.hostIsPlaying() ? "HOST" : processor.internalPlay.load() ? "INTERNAL" : "STOPPED"), juce::dontSendNotification);
