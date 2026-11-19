@@ -13,6 +13,18 @@ x̂  = D(z')     modal bank + phase-coherent residual playback + re-rendered noi
 Δz = 0 reproduces the source at 95–100 dB SNR (see `make render-test`), so the model is
 lossless at rest; every perturbation is a deliberate, physically-motivated departure.
 
+## Download and install (macOS 11+, Apple Silicon or Intel)
+
+1. Download `Vellum-macOS.zip` from the [latest release](https://github.com/grantshueh/vellum/releases/latest) and unzip it.
+2. Copy `Vellum.component` to `~/Library/Audio/Plug-Ins/Components/` (Logic Pro, GarageBand, other AU hosts) and `Vellum.app` to `/Applications` for the standalone.
+3. The builds are not signed by Apple. Clear the quarantine flag once in Terminal:
+
+   ```
+   xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/Vellum.component /Applications/Vellum.app
+   ```
+
+4. In Logic Pro: Software Instrument track → **AU Instruments → Vellum → Vellum**.
+
 ## Build (Command Line Tools only)
 
 ```bash
@@ -57,3 +69,7 @@ can also be routed to decay, brightness, attack and pitch in the Advanced panel.
 - Loop extraction slices at onsets and picks one representative per timbre cluster; overlapping
   hits are not separated, their cut-off tails are extrapolated from the noise model.
 - Mono engine (stereo sources are summed); SPACE adds early reflections and width.
+
+## License
+
+Vellum is free software under the **GNU AGPLv3** (see [LICENSE](LICENSE)). It is built with [JUCE](https://juce.com) under JUCE's AGPLv3 option.
